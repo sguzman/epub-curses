@@ -13,3 +13,6 @@ wheels/
 *.json
 *.wav
 *.mp3
+.ruff_cache
+.venv
+.cache
