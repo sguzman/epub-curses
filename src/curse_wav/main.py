@@ -100,16 +100,34 @@ def main(stdscr):
 
         key = stdscr.getch()
 
-        if key == ord("q"):
+        if key in (ord("q"), ord("Q")):
             save_last_position(os.path.basename(filepath), current_line)
             break
-        elif key == curses.KEY_UP and current_line > 0:
-            current_line -= 1
-        elif key == curses.KEY_DOWN and current_line < len(lines) - 1:
-            current_line += 1
-        elif key == ord(" "):
-            new_line = min(current_line + height - 2, len(lines) - 1)
-            current_line = new_line
+        elif key in (ord("k"), ord("K"), curses.KEY_UP):
+            current_line = max(0, current_line - 1)
+        elif key in (ord("j"), ord("J"), curses.KEY_DOWN):
+            current_line = min(len(lines) - 1, current_line + 1)
+        elif key in (ord("h"), ord("H"), curses.KEY_LEFT):
+            # Move to the start of the file
+            current_line = 0
+        elif key in (ord("l"), ord("L"), curses.KEY_RIGHT):
+            # Move to the end of the file
+            current_line = len(lines) - 1
+        elif key in (ord("f"), ord("F")):
+            # Page down (Forward)
+            current_line = min(current_line + height - 2, len(lines) - 1)
+        elif key in (ord("b"), ord("B")):
+            # Page up (Backward)
+            current_line = max(0, current_line - (height - 2))
+        elif key == ord("g"):
+            # Go to the start of the file
+            current_line = 0
+        elif key in (ord("G"), ord("$")):
+            # Go to the end of the file
+            current_line = len(lines) - 1
+        elif key == ord("/"):
+            # Implement search functionality here if needed
+            pass
 
 
 if __name__ == "__main__":
