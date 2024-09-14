@@ -8,5 +8,7 @@
 #   with-sources: false
 
 -e file:.
+argparse==1.4.0
+    # via curse-wav
 pydub==0.25.1
     # via curse-wav

@@ -5,11 +5,19 @@ import json
 import shutil
 import threading
 import time
+import argparse
 from pydub import AudioSegment
 from pydub.playback import play
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), '.cache')
+CACHE_DIR = os.path.join(os.getcwd(), '.cache')
 TEXTS_JSON = os.path.join(CACHE_DIR, 'texts.json')
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Text viewer with audio synchronization")
+    parser.add_argument("--text", help="Path to the text file")
+    parser.add_argument("--audio", help="Path to the audio file")
+    parser.add_argument("--align", help="Path to the alignment JSON file")
+    return parser.parse_args()
 
 def get_cached_texts():
     if os.path.exists(TEXTS_JSON):
@@ -66,10 +74,12 @@ def play_audio(audio, start_time, stop_event):
 def main(stdscr):
     curses.curs_set(0)
 
-    if len(sys.argv) < 4:
+    args = parse_arguments()
+
+    if not (args.text and args.audio and args.align):
         texts = get_cached_texts()
         if not texts:
-            print("No cached texts available. Please provide text, audio, and alignment files as arguments.")
+            print("No cached texts available. Please provide text, audio, and alignment files using --text, --audio, and --align flags.")
             return
         
         stdscr.clear()
@@ -88,8 +98,7 @@ def main(stdscr):
                 cached_alignment = texts[selected_text]['alignment']
                 break
     else:
-        text_file, audio_file, alignment_file = sys.argv[1:4]
-        text_id, cached_text, cached_audio, cached_alignment = copy_to_cache(text_file, audio_file, alignment_file)
+        text_id, cached_text, cached_audio, cached_alignment = copy_to_cache(args.text, args.audio, args.align)
 
     # Load files
     with open(cached_text, 'r') as f:
@@ -138,8 +147,12 @@ def main(stdscr):
         status += f"Words: {current_word_count}/{total_words}"
         audio_status = f"Audio: {current_time:.1f}s / {total_time:.1f}s"
         
-        stdscr.addstr(height-1, 0, status[:width-len(audio_status)-1], curses.A_REVERSE)
-        stdscr.addstr(height-1, width-len(audio_status), audio_status, curses.A_REVERSE)
+        # Modify these lines to avoid writing to the last cell
+        max_status_length = width - len(audio_status) - 1
+        status = status[:max_status_length]
+        stdscr.addstr(height-1, 0, status, curses.A_REVERSE)
+        stdscr.addstr(height-1, len(status), " " * (width - len(status) - len(audio_status) - 1), curses.A_REVERSE)
+        stdscr.addstr(height-1, width - len(audio_status) - 1, audio_status, curses.A_REVERSE)
 
         key = stdscr.getch()
 
