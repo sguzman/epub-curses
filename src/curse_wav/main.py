@@ -61,6 +61,9 @@ def main(stdscr):
             current_line -= 1
         elif key == curses.KEY_DOWN and current_line < len(lines) - 1:
             current_line += 1
+        elif key == ord(" "):  # Space key for page down
+            new_line = min(current_line + height - 2, len(lines) - 1)
+            current_line = new_line
 
 
 if __name__ == "__main__":
