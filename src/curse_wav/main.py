@@ -4,7 +4,7 @@ import os
 import json
 import shutil
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
+CACHE_DIR = os.path.join(".", ".cache")
 
 
 def get_cached_files():
