@@ -71,21 +71,24 @@ def main(stdscr):
     total_words = sum(len(line.split()) for line in lines)
     current_line = get_last_position(os.path.basename(filepath))
     height, width = stdscr.getmaxyx()
+    mid_screen = height // 2 - 1
 
     while True:
         stdscr.clear()
 
-        for i in range(height - 2):
-            if current_line + i < len(lines):
-                line_num = current_line + i + 1
-                line = lines[current_line + i].strip()
+        # Calculate the range of lines to display
+        start_line = max(0, current_line - mid_screen)
+        end_line = min(len(lines), start_line + height - 2)
 
-                stdscr.addstr(i, 0, f"{line_num:4d} ", curses.A_DIM)
+        for i, line_num in enumerate(range(start_line, end_line)):
+            line = lines[line_num].strip()
 
-                if i == 0:
-                    stdscr.addstr(i, 5, line[: width - 5], curses.A_REVERSE)
-                else:
-                    stdscr.addstr(i, 5, line[: width - 5])
+            stdscr.addstr(i, 0, f"{line_num+1:4d} ", curses.A_DIM)
+
+            if line_num == current_line:
+                stdscr.addstr(i, 5, line[: width - 5], curses.A_REVERSE)
+            else:
+                stdscr.addstr(i, 5, line[: width - 5])
 
         words_before = sum(len(line.split()) for line in lines[:current_line])
         current_word_count = words_before + len(lines[current_line].split())
