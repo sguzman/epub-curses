@@ -8,3 +8,5 @@
 #   with-sources: false
 
 -e file:.
+pydub==0.25.1
+    # via curse-wav

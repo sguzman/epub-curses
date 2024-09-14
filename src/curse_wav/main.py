@@ -3,8 +3,12 @@ import sys
 import os
 import json
 import shutil
+import threading
+import time
+from pydub import AudioSegment
+from pydub.playback import play
 
-CACHE_DIR = os.path.join(".", ".cache")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 
 
 def get_cached_files():
@@ -27,56 +31,55 @@ def save_last_position(filename, last_line):
         json.dump({"last_line": last_line}, f)
 
 
+def play_audio(audio, start_time, stop_event):
+    segment = audio[start_time:]
+    play(segment)
+    stop_event.set()
+
+
 def main(stdscr):
     curses.curs_set(0)
 
-    if len(sys.argv) < 2:
-        cached_files = get_cached_files()
-        if not cached_files:
-            print(
-                "No cached files available. Please provide a file name as an argument."
-            )
-            return
-
-        stdscr.clear()
-        stdscr.addstr(0, 0, "Select a cached file:")
-        for i, file in enumerate(cached_files):
-            stdscr.addstr(i + 2, 0, f"{i+1}. {file}")
-        stdscr.refresh()
-
-        while True:
-            key = stdscr.getch()
-            if ord("1") <= key <= ord(str(len(cached_files))):
-                selected_file = cached_files[key - ord("1")]
-                filepath = os.path.join(CACHE_DIR, selected_file)
-                break
-    else:
-        filepath = sys.argv[1]
-        filename = os.path.basename(filepath)
-        cache_path = os.path.join(CACHE_DIR, filename)
-
-        if not os.path.exists(CACHE_DIR):
-            os.makedirs(CACHE_DIR)
-
-        shutil.copy2(filepath, cache_path)
-        filepath = cache_path
-
-    try:
-        with open(filepath, "r") as file:
-            lines = file.readlines()
-    except FileNotFoundError:
-        print(f"File '{filepath}' not found.")
+    if len(sys.argv) < 4:
+        print("Usage: python script.py <text_file> <audio_file> <alignment_file>")
         return
 
+    text_file, audio_file, alignment_file = sys.argv[1:4]
+
+    # Copy files to cache
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+
+    cached_text = os.path.join(CACHE_DIR, os.path.basename(text_file))
+    cached_audio = os.path.join(CACHE_DIR, os.path.basename(audio_file))
+    cached_alignment = os.path.join(CACHE_DIR, os.path.basename(alignment_file))
+
+    shutil.copy2(text_file, cached_text)
+    shutil.copy2(audio_file, cached_audio)
+    shutil.copy2(alignment_file, cached_alignment)
+
+    # Load files
+    with open(cached_text, "r") as f:
+        lines = f.readlines()
+
+    audio = AudioSegment.from_file(cached_audio)
+
+    with open(cached_alignment, "r") as f:
+        alignment = json.load(f)
+
     total_words = sum(len(line.split()) for line in lines)
-    current_line = get_last_position(os.path.basename(filepath))
+    current_line = get_last_position(os.path.basename(cached_text))
     height, width = stdscr.getmaxyx()
     mid_screen = height // 2 - 1
+
+    audio_thread = None
+    stop_event = threading.Event()
+    current_time = 0
+    total_time = len(audio) / 1000  # in seconds
 
     while True:
         stdscr.clear()
 
-        # Calculate the range of lines to display
         start_line = max(0, current_line - mid_screen)
         end_line = min(len(lines), start_line + height - 2)
 
@@ -96,38 +99,58 @@ def main(stdscr):
 
         status = f"Line: {current_line+1}/{len(lines)} ({percent:.1f}%) | "
         status += f"Words: {current_word_count}/{total_words}"
-        stdscr.addstr(height - 1, 0, status[: width - 1], curses.A_REVERSE)
+        audio_status = f"Audio: {current_time:.1f}s / {total_time:.1f}s"
+
+        stdscr.addstr(
+            height - 1, 0, status[: width - len(audio_status) - 1], curses.A_REVERSE
+        )
+        stdscr.addstr(
+            height - 1, width - len(audio_status), audio_status, curses.A_REVERSE
+        )
 
         key = stdscr.getch()
 
         if key in (ord("q"), ord("Q")):
-            save_last_position(os.path.basename(filepath), current_line)
+            save_last_position(os.path.basename(cached_text), current_line)
+            if audio_thread and audio_thread.is_alive():
+                stop_event.set()
+                audio_thread.join()
             break
-        elif key in (ord("k"), ord("K"), curses.KEY_UP):
-            current_line = max(0, current_line - 1)
-        elif key in (ord("j"), ord("J"), curses.KEY_DOWN):
-            current_line = min(len(lines) - 1, current_line + 1)
-        elif key in (ord("h"), ord("H"), curses.KEY_LEFT):
-            # Move to the start of the file
-            current_line = 0
-        elif key in (ord("l"), ord("L"), curses.KEY_RIGHT):
-            # Move to the end of the file
-            current_line = len(lines) - 1
-        elif key in (ord("f"), ord("F")):
-            # Page down (Forward)
-            current_line = min(current_line + height - 2, len(lines) - 1)
-        elif key in (ord("b"), ord("B")):
-            # Page up (Backward)
-            current_line = max(0, current_line - (height - 2))
-        elif key == ord("g"):
-            # Go to the start of the file
-            current_line = 0
-        elif key in (ord("G"), ord("$")):
-            # Go to the end of the file
-            current_line = len(lines) - 1
-        elif key == ord("/"):
-            # Implement search functionality here if needed
-            pass
+        elif key == ord(" "):
+            if audio_thread and audio_thread.is_alive():
+                stop_event.set()
+                audio_thread.join()
+            else:
+                current_fragment = next(
+                    (
+                        f
+                        for f in alignment["fragments"]
+                        if f["lines"][0] == current_line
+                    ),
+                    None,
+                )
+                if current_fragment:
+                    start_time = (
+                        current_fragment["begin"] * 1000
+                    )  # convert to milliseconds
+                    stop_event.clear()
+                    audio_thread = threading.Thread(
+                        target=play_audio, args=(audio, start_time, stop_event)
+                    )
+                    audio_thread.start()
+
+        # ... (keep the other navigation commands as they are) ...
+
+        if audio_thread and audio_thread.is_alive():
+            for fragment in alignment["fragments"]:
+                if fragment["begin"] <= current_time < fragment["end"]:
+                    current_line = fragment["lines"][0]
+                    break
+            current_time += 0.1  # Update every 100ms
+        else:
+            current_time = 0
+
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
