@@ -44,12 +44,12 @@ def main(stdscr):
 
         # Calculate statistics
         words_before = sum(len(line.split()) for line in lines[:current_line])
-        words_left = total_words - words_before
+        current_word_count = words_before + len(lines[current_line].split())
         percent = (current_line + 1) / len(lines) * 100
 
         # Display status bar
         status = f"Line: {current_line+1}/{len(lines)} ({percent:.1f}%) | "
-        status += f"Words: {total_words} | Before: {words_before} | Left: {words_left}"
+        status += f"Words: {current_word_count}/{total_words}"
         stdscr.addstr(height - 1, 0, status[: width - 1], curses.A_REVERSE)
 
         # Get user input
