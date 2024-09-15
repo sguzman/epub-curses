@@ -12,6 +12,14 @@ from pydub.playback import play
 CACHE_DIR = os.path.join(os.getcwd(), '.cache')
 TEXTS_JSON = os.path.join(CACHE_DIR, 'texts.json')
 
+def play_audio(audio, start_time, stop_event, pause_event):
+    segment = audio[start_time:]
+    play_obj = play(segment, block=False)
+    while play_obj.is_playing() and not stop_event.is_set():
+        pause_event.wait()
+        time.sleep(0.1)
+    play_obj.stop()
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Text viewer with audio synchronization")
     parser.add_argument("--text", help="Path to the text file")
@@ -120,8 +128,26 @@ def main(stdscr):
 
     audio_thread = None
     stop_event = threading.Event()
+    pause_event = threading.Event()
+    pause_event.set()  # Start in playing state
     current_time = 0
     total_time = len(audio) / 1000  # in seconds
+    is_playing = False
+
+    def start_audio_playback(start_line):
+        nonlocal audio_thread, current_time, is_playing
+        if audio_thread and audio_thread.is_alive():
+            stop_event.set()
+            audio_thread.join()
+        current_fragment = next((f for f in alignment['fragments'] if f['lines'][0] == start_line), None)
+        if current_fragment:
+            start_time = current_fragment['begin'] * 1000  # convert to milliseconds
+            current_time = start_time / 1000
+            stop_event.clear()
+            pause_event.set()
+            audio_thread = threading.Thread(target=play_audio, args=(audio, start_time, stop_event, pause_event))
+            audio_thread.start()
+            is_playing = True
 
     while True:
         stdscr.clear()
@@ -163,32 +189,50 @@ def main(stdscr):
                 audio_thread.join()
             break
         elif key == ord(' '):
-            if audio_thread and audio_thread.is_alive():
-                stop_event.set()
-                audio_thread.join()
+            if is_playing:
+                pause_event.clear()
+                is_playing = False
             else:
-                current_fragment = next((f for f in alignment['fragments'] if f['lines'][0] == current_line), None)
-                if current_fragment:
-                    start_time = current_fragment['begin'] * 1000  # convert to milliseconds
-                    stop_event.clear()
-                    audio_thread = threading.Thread(target=play_audio, args=(audio, start_time, stop_event))
-                    audio_thread.start()
+                if not audio_thread or not audio_thread.is_alive():
+                    start_audio_playback(current_line)
+                else:
+                    pause_event.set()
+                    is_playing = True
         elif key in (ord('k'), ord('K'), curses.KEY_UP):
             current_line = max(0, current_line - 1)
+            start_audio_playback(current_line)
         elif key in (ord('j'), ord('J'), curses.KEY_DOWN):
             current_line = min(len(lines) - 1, current_line + 1)
+            start_audio_playback(current_line)
         elif key in (ord('h'), ord('H'), curses.KEY_LEFT):
             current_line = 0
+            start_audio_playback(current_line)
         elif key in (ord('l'), ord('L'), curses.KEY_RIGHT):
             current_line = len(lines) - 1
+            start_audio_playback(current_line)
         elif key in (ord('f'), ord('F')):
             current_line = min(current_line + height - 2, len(lines) - 1)
+            start_audio_playback(current_line)
         elif key in (ord('b'), ord('B')):
             current_line = max(0, current_line - (height - 2))
+            start_audio_playback(current_line)
         elif key == ord('g'):
             current_line = 0
+            start_audio_playback(current_line)
         elif key in (ord('G'), ord('$')):
             current_line = len(lines) - 1
+            start_audio_playback(current_line)
+
+        if audio_thread and audio_thread.is_alive() and pause_event.is_set():
+            for fragment in alignment['fragments']:
+                if fragment['begin'] <= current_time < fragment['end']:
+                    current_line = fragment['lines'][0]
+                    break
+            current_time += 0.1  # Update every 100ms
+        elif not pause_event.is_set():
+            current_time = current_time  # Pause the timer when audio is paused
+
+        time.sleep(0.1)
 
         if audio_thread and audio_thread.is_alive():
             for fragment in alignment['fragments']:
