@@ -3,6 +3,8 @@ import os
 import json
 import shutil
 import argparse
+from typing import Optional
+import time
 
 CACHE_DIR = os.path.join(os.getcwd(), ".cache")
 TEXTS_JSON = os.path.join(CACHE_DIR, "texts.json")
@@ -99,9 +101,35 @@ def main(stdscr):
     height, width = stdscr.getmaxyx()
     mid_screen = height // 2 - 1
 
-    while True:
-        stdscr.clear()
+    def input() -> Optional[bool]:
+        nonlocal current_line
+        key = stdscr.getch()
+        if key in (ord("q"), ord("Q")):
+            save_last_position(text_id, current_line)
+            return None
+        elif key in (ord("k"), ord("K"), curses.KEY_UP):
+            current_line = max(0, current_line - 1)
+        elif key in (ord("j"), ord("J"), curses.KEY_DOWN):
+            current_line = min(len(lines) - 1, current_line + 1)
+        elif key in (ord("h"), ord("H"), curses.KEY_LEFT):
+            current_line = max(0, current_line - 10)
+        elif key in (ord("l"), ord("L"), curses.KEY_RIGHT):
+            current_line = min(len(lines) - 1, current_line + 10)
+        elif key in (ord("f"), ord("F")):
+            current_line = min(current_line + height - 2, len(lines) - 1)
+        elif key in (ord("b"), ord("B")):
+            current_line = max(0, current_line - (height - 2))
+        elif key == ord("g"):
+            current_line = 0
+        elif key in (ord("G"), ord("$")):
+            current_line = len(lines) - 1
+        else:
+            return False
 
+        return True
+
+    def draw():
+        stdscr.clear()
         start_line = max(0, current_line - mid_screen)
         end_line = min(len(lines), start_line + height - 2)
 
@@ -122,30 +150,16 @@ def main(stdscr):
         status += f"Words: {current_word_count}/{total_words}"
 
         stdscr.addstr(height - 1, 0, status[:width], curses.A_REVERSE)
-
         stdscr.refresh()
 
-        key = stdscr.getch()
+    while True:
+        time.sleep(0.01)
 
-        if key in (ord("q"), ord("Q")):
-            save_last_position(text_id, current_line)
+        press = input()
+        if press is None:
             break
-        elif key in (ord("k"), ord("K"), curses.KEY_UP):
-            current_line = max(0, current_line - 1)
-        elif key in (ord("j"), ord("J"), curses.KEY_DOWN):
-            current_line = min(len(lines) - 1, current_line + 1)
-        elif key in (ord("h"), ord("H"), curses.KEY_LEFT):
-            current_line = max(0, current_line - 10)
-        elif key in (ord("l"), ord("L"), curses.KEY_RIGHT):
-            current_line = min(len(lines) - 1, current_line + 10)
-        elif key in (ord("f"), ord("F")):
-            current_line = min(current_line + height - 2, len(lines) - 1)
-        elif key in (ord("b"), ord("B")):
-            current_line = max(0, current_line - (height - 2))
-        elif key == ord("g"):
-            current_line = 0
-        elif key in (ord("G"), ord("$")):
-            current_line = len(lines) - 1
+        elif press:
+            draw()
 
 
 if __name__ == "__main__":
