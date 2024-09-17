@@ -152,6 +152,7 @@ def main(stdscr):
         stdscr.addstr(height - 1, 0, status[:width], curses.A_REVERSE)
         stdscr.refresh()
 
+    draw()
     while True:
         time.sleep(0.01)
 
